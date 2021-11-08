@@ -5,67 +5,97 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"strings"
 )
 
 type Config struct {
-	Token string
+	Token     string
 	ProjectID string
 }
 
 type Client struct {
-	http    *http.Client
-	baseURL string
+	http     *http.Client
+	baseURL  *url.URL
 	apiToken string
-	projectID string
-
-	autoRetry bool
 }
+
+const baseURL = "https://app.autify.com/api/v1/"
 
 // New returns a clinet for connecting to the Autify API
 // https://autifyhq.github.io/autify-api/
 func New(config Config) *Client {
+
+	baseURL, _ := url.Parse(baseURL)
+
 	c := &Client{
-		http:      &http.Client{},
-		baseURL:   "https://app.autify.com/api/v1",
-		apiToken:  config.Token,
-		projectID: config.ProjectID,
+		http:     &http.Client{},
+		baseURL:  baseURL,
+		apiToken: config.Token,
 	}
 
 	return c
 }
 
-
 func (c *Client) get(ctx context.Context, url string, result interface{}) error {
-	for {
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	return c.call(ctx, url, "GET", nil, result)
+}
 
-		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.apiToken))
-		if err != nil {
-			return err
-		}
-		resp, err := c.http.Do(req)
-		if err != nil {
-			return err
-		}
-
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusNoContent {
-			return nil
-		}
-		if resp.StatusCode != http.StatusOK {
-			return c.error(resp)
-		}
-
-		err = json.NewDecoder(resp.Body).Decode(result)
-		if err != nil {
-			return err
-		}
-
-		break
+func (c *Client) post(ctx context.Context, url string, postBody interface{}, result interface{}) error {
+	jsonParams, err := json.Marshal(postBody)
+	if err != nil {
+		return err
 	}
+
+	body := bytes.NewBuffer(jsonParams)
+
+	return c.call(ctx, url, "POST", body, result)
+}
+
+func (c *Client) delete(ctx context.Context, url string, result interface{}) error {
+	return c.call(ctx, url, "DELETE", nil, result)
+}
+
+func (c *Client) call(ctx context.Context, urlStr, method string, body io.Reader, result interface{}) error {
+	if !strings.HasSuffix(c.baseURL.Path, "/") {
+		return fmt.Errorf("BaseURL must have a trailing slash, but %q does not", c.baseURL)
+	}
+	url, err := c.baseURL.Parse(urlStr)
+
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url.String(), nil)
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.apiToken))
+	req.Header.Set("Content-Type", "application/json")
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return c.error(resp)
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(result)
+
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -114,11 +144,10 @@ func (c *Client) error(resp *http.Response) error {
 	}
 	if len(e.Errors) > 0 {
 		resError.Message = "autify: raw error messages: "
-		for _, v := range e.Errors{
+		for _, v := range e.Errors {
 			resError.Message += fmt.Sprintf("%s, ", v.Message)
 		}
 	}
 
 	return resError
 }
-
