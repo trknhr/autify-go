@@ -14,7 +14,7 @@ go install github.com/trknhr/auify
 
 # How to use
 
-# Authentication 
+## Authentication 
 
 You have to prepare API key and your projectID to use this library. To generate or manage API keys、please visit your account page.
 
