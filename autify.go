@@ -25,7 +25,7 @@ type Client struct {
 
 const baseURL = "https://app.autify.com/api/v1/"
 
-// New returns a clinet for connecting to the Autify API
+// New returns a client for connecting to the Autify API
 // https://autifyhq.github.io/autify-api/
 func New(config Config) *Client {
 
